@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>File Management System</title>
+    <style>
+        .directory { color: blue; cursor: pointer; }
+        #backButton { display: none; } 
+    </style>
+</head>
+<body>
+    <h1>File Management System</h1>
+
+    <!-- Current Directory Display -->
+    <p id="currentDirectoryDisplay">Current Directory: /</p>
+
+    <!-- "Go Back" Button -->
+    <button id="backButton" onclick="goBack()">Go Back</button>
+
+    <!-- Display File Structure -->
+    <h2>Files and Directories</h2>
+    <ul id="fileList"></ul>
+
+    <!-- Form to Upload Files -->
+    <h2>Upload File to Current Folder</h2>
+    <form id="uploadForm" action="/upload-multiple" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="dir" id="currentDir" value="">
+        <input type="file" name="files" multiple required>
+        <button type="submit">Upload Files</button>
+    </form>
+
+    <!-- Form to Create a New Folder -->
+    <h2>Create a Folder</h2>
+    <form id="createFolderForm">
+        <label for="folderName">Folder Name:</label>
+        <input type="text" id="folderName" name="folderName" required>
+        <button type="button" onclick="createFolder()">Create Folder</button>
+    </form>
+    
+    <!-- Form to Delete a Folder -->
+    <h2>Delete a Folder</h2>
+    <form id="deleteFolderForm">
+        <label for="folderDelete">Folder Name:</label>
+        <input type="text" id="folderDelete" name="folderName" required>
+        <button type="button" onclick="deleteFolder()">Delete Folder</button>
+    </form>
+
+    <script>
+        
+        // Start at root of 'uploads' directory
+        let currentDir = ''; 
+
+        // Function to set the current directory and update the display
+        function setCurrentDirectory(dir) {
+            currentDir = dir;
+            document.getElementById('currentDir').value = dir;
+            document.getElementById('currentDirectoryDisplay').textContent = `Current Directory: /uploads/${dir || ''}`;
+            document.getElementById('backButton').style.display = dir ? 'inline-block' : 'none'; // Show "Go Back" button if not at root
+        }
+
+        // Function to load files and directories from the server
+        function loadFiles(dir = '') {
+            fetch(`/files?dir=${encodeURIComponent(dir)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const fileList = document.getElementById('fileList');
+                    
+                    // Clear current list
+                    fileList.innerHTML = ''; 
+
+                    // Set and display the current directory
+                    setCurrentDirectory(dir);
+
+                    // Display each file and directory
+                    data.files.forEach(file => {
+                        const li = document.createElement('li');
+                        li.className = file.type === 'Directory' ? 'directory' : 'file';
+
+                        // Create an icon element
+                        const icon = document.createElement('span');
+                        icon.style.marginRight = '10px'; 
+                        icon.innerHTML = file.type === 'Directory' ? '📁' : '📄'; // Folder or file icon
+                        li.appendChild(icon);
+
+                        // Add the file or folder name
+                        const nameSpan = document.createElement('span');
+                        nameSpan.textContent = file.name;
+                        li.appendChild(nameSpan);
+
+                        if (file.type === 'Directory') {
+                            // Make directories clickable for navigation
+                            li.onclick = () => {
+                                const newDir = dir ? `${dir}/${file.name}` : file.name;
+                                loadFiles(newDir);
+                            };
+
+                            // Create Rename button for directories
+                            const renameFolderButton = document.createElement('button');
+                            renameFolderButton.textContent = 'Rename Folder';
+                            renameFolderButton.onclick = (e) => {
+                                // Prevent navigation when clicking on button
+                                e.stopPropagation();
+                                const newName = prompt("Enter new folder name:", file.name);
+                                if (newName && newName !== file.name) {
+                                    renameFolder(dir, file.name, newName);
+                                }
+                            };
+                            li.appendChild(renameFolderButton);
+                        } else {
+                            // Create buttons for files
+                            const downloadButton = document.createElement('button');
+                            downloadButton.textContent = 'Download';
+                            downloadButton.onclick = (e) => {
+                                e.stopPropagation();
+                                downloadFile(dir, file.name);
+                            };
+                            li.appendChild(downloadButton);
+
+                            const renameFileButton = document.createElement('button');
+                            renameFileButton.textContent = 'Rename';
+                            renameFileButton.onclick = (e) => {
+                                e.stopPropagation();
+                                const newName = prompt("Enter new file name:", file.name);
+                                if (newName && newName !== file.name) {
+                                    renameFile(dir, file.name, newName);
+                                }
+                            };
+                            li.appendChild(renameFileButton);
+
+                            const deleteFileButton = document.createElement('button');
+                            deleteFileButton.textContent = 'Delete';
+                            deleteFileButton.onclick = (e) => {
+                                e.stopPropagation();
+                                deleteFile(dir, file.name);
+                            };
+                            li.appendChild(deleteFileButton);
+                        }
+
+                        fileList.appendChild(li);
+                    });
+                })
+                .catch(error => console.error('Error loading files:', error));
+        }
+
+        // Funcion to create a folder
+        function createFolder() {
+            const folderName = document.getElementById('folderName').value;
+            const dir = currentDir; // Use the current directory path for subfolder creation
+
+            if (!folderName) {
+                alert("Folder name is required");
+                return;
+            }
+
+            fetch('/create-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folderName, dir })
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert('Folder created successfully');
+                    loadFiles(currentDir); // Reload the folder view
+                } else {
+                    return response.json().then(data => { throw new Error(data.message); });
+                }
+            })
+            .catch(error => {
+                console.error('Error creating folder:', error);
+                alert('Failed to create folder: ' + error.message);
+            });
+        }
+        
+        // Function to rename a file
+        function renameFile(dir, oldName, newName) {
+            fetch('/rename-file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dir, oldName, newName })
+            })
+            .then(response => response.text())
+            .then(message => {
+                alert(message); // Show success message
+                loadFiles(currentDir); // Reload the current directory view
+            })
+            .catch(error => {
+                console.error('Error renaming file:', error);
+                alert('Failed to rename file');
+            });
+        }
+
+        // Function to delete a file
+        function deleteFile(dir, filename) {
+            fetch('/delete-file', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dir, filename })
+            })
+            .then(response => response.text())
+            .then(message => {
+                alert(message); // Show success message
+                loadFiles(currentDir); // Reload the current directory view
+            })
+            .catch(error => {
+                console.error('Error deleting file:', error);
+                alert('Failed to delete file');
+            });
+        }
+
+        // Function to download a file
+        function downloadFile(dir, filename) {
+            window.location.href = `/download-file?dir=${encodeURIComponent(dir)}&filename=${encodeURIComponent(filename)}`;
+        }
+
+        // Function to delete a folder
+        function deleteFolder() {
+            const folderName = document.getElementById('folderDelete').value;
+            const dir = currentDir; // Current directory context
+
+            if (!folderName) {
+                alert("Folder name is required");
+                return;
+            }
+
+            const folderPath = dir ? `${dir}/${folderName}` : folderName; // Construct full path
+
+            fetch('/delete-folder', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folderPath })
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert('Folder deleted successfully');
+                    setTimeout(() => loadFiles(currentDir), 100); // Delay for reload
+                } else {
+                    return response.json().then(data => { throw new Error(data.message); });
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting folder:', error);
+                alert('Failed to delete folder: ' + error.message);
+            });
+        }
+
+        // Function to rename a folder
+        function renameFolder(dir, oldName, newName) {
+            fetch('/rename-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dir, oldName, newName })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => { throw new Error(data.message); });
+                }
+                return response.json(); 
+            })
+            .then(data => {
+                alert(data.message); // Show success message
+                loadFiles(currentDir); // Reload the current directory view to reflect changes
+            })
+            .catch(error => {
+                console.error('Error renaming folder:', error);
+                alert('Failed to rename folder: ' + error.message);
+            });
+}
+
+        // Function to navigate back to the parent directory
+        function goBack() {
+            const parentDir = currentDir.split('/').slice(0, -1).join('/');
+            loadFiles(parentDir); // Load the parent directory
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            event.preventDefault(); // Prevent default form submission
+            const formData = new FormData(this); // Form data is automatically collected from the form elements
+            
+            fetch(this.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(message => {
+                alert(message); 
+                loadFiles(currentDir); 
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+                alert('Failed to upload file');
+            });
+        });
+
+        // Initial load of the root directory
+        loadFiles();
+    </script>
+</body>
+</html>
