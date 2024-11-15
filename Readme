@@ -1,0 +1,20 @@
+# File Management System
+
+This project is a Node.js-based file management system that provides functionality for uploading, renaming, downloading, and deleting files and folders. It uses `Multer` middleware for handling file uploads.
+
+## Features
+
+- Upload files to a specified folder using `Multer`
+- Create, delete, and rename folders
+- Download files
+
+## Installation
+
+1. Clone the repository:
+   
+   git clone https://github.com/mkhlsurin/File_Management_System.git
+   
+2. Run it
+
+    npm install (should work for our simple project)
+    node app.js
